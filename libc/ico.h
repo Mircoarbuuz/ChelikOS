@@ -1,0 +1,1 @@
+const char* logo = "\\-/\n |C|\n/_\\";

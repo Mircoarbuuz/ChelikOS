@@ -1,6 +1,7 @@
 #include "libc/textmode/terminal.h"
 #include "libc/fs/fat.h"
 #include "libc/int.h"
+#include "libc/ico.h"
 void print_file(const char *name, uint8_t attributes) {
     terminal_writestring(" ");
     terminal_writestring(name);
@@ -14,7 +15,7 @@ void print_file(const char *name, uint8_t attributes) {
 }
 void kernel_main(void) {
     terminal_initialize();
-    terminal_writestring("ChelikOS 0.01\n");
+    terminal_writestring("ChelikOS 0.011\n");
 
     fat32_filesystem_t fs;
     if (fat32_mount(0, &fs) != 0) {
@@ -37,8 +38,11 @@ void kernel_main(void) {
         else if (strcmp(input_buffer, "clear") == 0) {
             terminal_initialize();
         } 
+        else if (strcmp(input_buffer, "logo") == 0) {
+            terminal_writestring(logo);
+        }
         else if (strcmp(input_buffer, "help") == 0) {
-            terminal_writestring("ls, clear, help\n");
+            terminal_writestring("logo, ls, clear, help\n");
         } 
         else if (input_buffer[0] != '\0') {
             terminal_writestring("Unknown command: ");
