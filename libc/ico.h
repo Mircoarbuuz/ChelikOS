@@ -1,1 +1,1 @@
-const char* logo = "\\-/\n |C|\n/_\\";
+const char* logo = "\\-/\n|C|\n/_\\ \n";
