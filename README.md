@@ -9,3 +9,9 @@ Differences
 | **Standard Library (`libc`)** | No | Yes  |
 | **Architecture** | Minimal kernel | 64-bit Long Mode, Multiboot 2 |
 | **Build System & Toolchain** | a build.txt file | Makefile |
+Requirements
+-
+| System Specification | Requirement |
+| :--- | :--- |
+| **Minimum CPU** | AMD Athlon 64 |
+| **Minimum RAM** | 32 MB |
