@@ -4,6 +4,13 @@
 #include "libc/ico.h"
 #include "libc/drivers/process.h"
 
+void background_worker(void) {
+    while (1) {
+        // Background loop task yielding execution back to scheduler
+        process_yield();
+    }
+}
+
 void print_file(const char *name, uint8_t attributes) {
     terminal_writestring(" ");
     terminal_writestring(name);
@@ -13,7 +20,6 @@ void print_file(const char *name, uint8_t attributes) {
     terminal_writestring("\n");
 }
 
-// Simple integer-to-string helper so we don't crash printing PIDs
 void print_dec(int val) {
     if (val == 0) {
         terminal_writestring("0");
@@ -25,15 +31,14 @@ void print_dec(int val) {
         buf[i++] = '0' + (val % 10);
         val /= 10;
     }
-    // Print in reverse
-    while (i >  0) {
+    while (i > 0) {
         char s[2] = { buf[--i], '\0' };
         terminal_writestring(s);
     }
 }
 
-// Callback used by `ps` to print active tasks dynamically safely
 void print_process_entry(int pid, const char *state, const char *name) {
+    (void)pid;
     terminal_writestring("  [PID ");
     print_dec(pid);
     terminal_writestring("] ");
@@ -45,13 +50,10 @@ void print_process_entry(int pid, const char *state, const char *name) {
 
 void kernel_main(void) {
     terminal_initialize();
-    terminal_writestring("ChelikOS 0.012 [Multitasking Active]\n");
+    terminal_writestring("ChelikOS 0.013 [True Multitasking Active]\n");
 
-    // Initialize the real process subsystem
     process_manager_init();
-    
-    // Spawn a background process to test real tracking
-    process_create("bg_worker");
+    process_create("bg_worker", background_worker);
 
     fat32_filesystem_t fs;
     if (fat32_mount(0, &fs) != 0) {
@@ -64,6 +66,7 @@ void kernel_main(void) {
     char input_buffer[256];
 
     while (1) {
+        process_yield(); // Yield occasionally in the shell loop to let background tasks run
         terminal_getkey("chelik ] ", input_buffer, sizeof(input_buffer));
 
         if (strcmp(input_buffer, "ls") == 0 || strcmp(input_buffer, "dir") == 0) {

@@ -1,18 +1,16 @@
-OUTPUT_FORMAT(elf64-x86-64)
-OUTPUT_ARCH(i386:x86-64)
-ENTRY(loader)
+ENTRY(start)
 
 SECTIONS
 {
     . = 1M;
 
-    .text : {
-        *(.multiboot)
-        *(.text)
+    .rodata : {
+        KEEP(*(.multiboot))
+        *(.rodata*)
     }
 
-    .rodata : {
-        *(.rodata*)
+    .text : {
+        *(.text)
     }
 
     .data : {
@@ -20,6 +18,9 @@ SECTIONS
     }
 
     .bss : {
+        __bss_start = .;
         *(.bss)
+        *(COMMON)
+        __bss_end = .;
     }
 }

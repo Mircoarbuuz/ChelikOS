@@ -1,84 +1,84 @@
-BITS 32
-
-section .multiboot
-align 4
-header_start:
-    dd 0xE85250D6                ; Multiboot 2 magic number
-    dd 0                         ; Architecture 0 (Protected mode / i386)
-    dd header_end - header_start ; Header length
-    dd -(0xE85250D6 + 0 + (header_end - header_start)) ; Checksum
-
-    ; Required End Tag
-    dw 0                         ; Type = 0
-    dw 0                         ; Flags = 0
-    dd 8                         ; Size = 8
-header_end:
+global start
+extern kernel_main
+extern __bss_start
+extern __bss_end
 
 section .text
-global loader
-extern kernel_main
-
-loader:
-    cli                    ; Disable interrupts
+bits 32
+start:
     mov esp, stack_top
 
-    ; 1. Zero out 12KB (3 pages: PML4, PDPT, PD) starting at 0x10000
-    mov edi, 0x10000
-    xor eax, eax
-    mov ecx, (4096 * 3) / 4
-    rep stosd
+    cmp eax, 0x36d76289
+    jne .no_multiboot
 
-    ; 2. Set up 64-bit Identity Paging at 0x10000
-    mov dword [0x10000], 0x11003  ; PML4[0] -> PDPT (0x11000) [Present, Writeable]
-    mov dword [0x11000], 0x12003  ; PDPT[0] -> PD (0x12000)   [Present, Writeable]
-    mov dword [0x12000], 0x00000083 ; PD[0] -> 2MB Page       [Present, Writeable, Huge]
+    ; Zero out BSS section safely
+    mov edi, __bss_start
+    mov ecx, __bss_end
+    sub ecx, edi
+    xor al, al
+    rep stosb
 
-    ; 3. Load CR3 with PML4 base address
-    mov eax, 0x10000
+    call setup_page_tables
+    call enable_paging
+
+    lgdt [gdt64.pointer]
+    jmp gdt64.code_selector:kernel_64
+
+.no_multiboot:
+    cli
+    hlt
+
+setup_page_tables:
+    mov eax, pdpt_table
+    or eax, 0b11
+    mov [pml4_table], eax
+
+    mov eax, pd_table
+    or eax, 0b11
+    mov [pdpt_table], eax
+
+    mov ecx, 0
+.loop:
+    mov eax, 0x200000
+    mul ecx
+    or eax, 0b10000011
+    mov [pd_table + ecx * 8], eax
+    inc ecx
+    cmp ecx, 512
+    jne .loop
+    ret
+
+enable_paging:
+    mov eax, pml4_table
     mov cr3, eax
 
-    ; 4. Enable PAE (Physical Address Extension) in CR4
+    ; Enable PAE and SSE (OSFXSR, OSXMMEXCPT) in CR4
     mov eax, cr4
-    or eax, 1 << 5
+    or eax, (1 << 5) | (1 << 9) | (1 << 10)
     mov cr4, eax
 
-    ; 5. Enable Long Mode in EFER MSR (0xC0000080)
+    ; Enable Long Mode in EFER MSR
     mov ecx, 0xC0000080
     rdmsr
     or eax, 1 << 8
     wrmsr
 
-    ; 6. Enable Paging and Protected Mode in CR0
+    ; Enable Paging in CR0
     mov eax, cr0
-    or eax, (1 << 31) | (1 << 0)
+    or eax, 1 << 31 | 1 << 0
     mov cr0, eax
+    ret
 
-    ; 7. Load 64-bit GDT and jump to 64-bit code segment
-    lgdt [gdt64_descriptor]
-    jmp 0x08:code_64
-
-section .data
-align 8
-gdt64:
-    dw 0, 0, 0, 0                ; Null descriptor
-    dw 0xFFFF, 0x0000, 0x9A00, 0x00AF ; 64-bit code descriptor
-    dw 0xFFFF, 0x0000, 0x9200, 0x00CF ; 64-bit data descriptor
-
-gdt64_descriptor:
-    dw $ - gdt64 - 1
-    dd gdt64
-
-[bits 64]
-code_64:
-    mov ax, 0x10
+bits 64
+kernel_64:
+    xor ax, ax
     mov ds, ax
     mov es, ax
     mov fs, ax
     mov gs, ax
     mov ss, ax
 
-    mov rsp, 0x90000     ; Safe 64-bit stack
-    call kernel_main     ; Jump into your C code
+    call kernel_main
 
 .hang:
     cli
@@ -86,7 +86,31 @@ code_64:
     jmp .hang
 
 section .bss
-align 16
-stack_bottom:
-    resb 16384           ; 16 KB Stack
+align 4096
+pml4_table: resb 4096
+pdpt_table: resb 4096
+pd_table:   resb 4096
+stack_bottom: resb 16384
 stack_top:
+
+section .rodata
+gdt64:
+    dq 0 ; Null descriptor
+.code_selector equ $ - gdt64
+    dq (1 << 43) | (1 << 44) | (1 << 47) | (1 << 53) | (1 << 55)
+.pointer:
+    dw $ - gdt64 - 1
+    dq gdt64
+
+section .multiboot
+align 8
+multiboot_header:
+    dd 0xe85250d6
+    dd 0
+    dd header_end - multiboot_header
+    dd -(0xe85250d6 + 0 + (header_end - multiboot_header))
+
+    dw 0
+    dw 0
+    dd 8
+header_end:
