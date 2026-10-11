@@ -5,10 +5,11 @@ AS = nasm
 CFLAGS = -ffreestanding -O2 -Wall -Wextra -I.
 ASFLAGS = -f elf64
 
-ASM_SOURCES = boot.asm libc/drivers/switch.asm
+ASM_SOURCES = boot.asm libc/drivers/switch.asm libc/drivers/isr.asm
 C_SOURCES = \
     kernel.c \
     libc/drivers/process.c \
+    libc/drivers/pit.c \
     libc/drivers/disk.c \
     libc/fs/fat.c \
     libc/string.c
@@ -43,9 +44,7 @@ chelikos.iso: kernel.bin
 		cp grub.cfg iso/boot/grub/grub.cfg; \
 	fi
 	grub-mkrescue -o chelikos.iso iso
-
 dev: chelikos.iso
 	qemu-system-x86_64 -hda fat32.img -cdrom chelikos.iso -m 512M -boot d
-
 clean:
-	rm -rf *.o libc/**/*.o libc/*.o kernel.bin chelikos.iso iso
+	rm -rf *.o libc/drivers/*.o libc/fs/*.o libc/*.o kernel.bin chelikos.iso iso

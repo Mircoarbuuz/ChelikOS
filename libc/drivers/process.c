@@ -1,6 +1,6 @@
 #include "process.h"
 
-#define MAX_PROCESSES 16
+#define MAX_PROCESSES 32 // Expanded to 32 processes
 
 static process_t process_table[MAX_PROCESSES];
 static int current_process_index = 0;
@@ -9,20 +9,14 @@ static int multitasking_enabled = 0;
 
 extern void switch_to(uint64_t *old_rsp, uint64_t new_rsp);
 
-// --- THE EXIT TRAMPOLINE WRAPPER ---
 static void process_exit_wrapper(void) {
     process_t *curr = &process_table[current_process_index];
-    
-    // Execute the actual task function
     if (curr->entry_point) {
         curr->entry_point();
     }
-    
-    // Terminate instead of returning to 0x0
     process_kill(curr->pid);
-    
     while (1) {
-        process_yield(); // Never return
+        process_yield();
     }
 }
 
@@ -51,11 +45,11 @@ int process_create(const char *name, void (*entry_point)(void)) {
             break;
         }
     }
-    if (slot == -1) return -1;
+    if (slot == -1) return -1; // Table full (32 reached)
 
     process_t *p = &process_table[slot];
     p->pid = next_pid++;
-    p->entry_point = entry_point; // Store entry point for wrapper
+    p->entry_point = entry_point;
     
     int j = 0;
     while (name[j] != '\0' && j < 31) {
@@ -67,11 +61,8 @@ int process_create(const char *name, void (*entry_point)(void)) {
     p->state = PROCESS_STATE_READY;
 
     uint64_t *stack_top = (uint64_t *)(p->stack + sizeof(p->stack));
-    
-    // Point the return address of switch_to directly to our exit wrapper
     *(--stack_top) = (uint64_t)process_exit_wrapper;
 
-    // Push initial values for 6 callee-saved registers (rbp, rbx, r12-r15)
     for (int i = 0; i < 6; i++) {
         *(--stack_top) = 0;
     }

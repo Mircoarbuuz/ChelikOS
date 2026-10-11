@@ -50,7 +50,7 @@ void print_process_entry(int pid, const char *state, const char *name) {
 
 void kernel_main(void) {
     terminal_initialize();
-    terminal_writestring("ChelikOS 0.013 [True Multitasking Active]\n");
+    terminal_writestring("ChelikOS 0.0121\n");
 
     process_manager_init();
     process_create("bg_worker", background_worker);
