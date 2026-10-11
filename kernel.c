@@ -50,18 +50,18 @@ void print_process_entry(int pid, const char *state, const char *name) {
 
 void kernel_main(void) {
     terminal_initialize();
-    terminal_writestring("ChelikOS 0.0121\n");
+    terminal_writestring("ChelikOS 0.0122\n");
 
     process_manager_init();
     process_create("bg_worker", background_worker);
 
     fat32_filesystem_t fs;
     if (fat32_mount(0, &fs) != 0) {
-        terminal_writestring("Mount failed!\n");
+        terminal_writestring("Mount failed\n");
         return;
     }
 
-    terminal_writestring("FAT32 mounted successfully!\n\n");
+    terminal_writestring("Mounted\n\n");
 
     char input_buffer[256];
 
@@ -96,8 +96,39 @@ void kernel_main(void) {
                 terminal_writestring("Failed to kill process (Invalid PID or protected).\n");
             }
         }
+        else if (strncmp(input_buffer, "rm ", 3) == 0) {
+            const char *filename = input_buffer + 3;
+            if (fat32_delete_file(&fs, filename) == 0) {
+                terminal_writestring("File deleted successfully.\n");
+            } else {
+                terminal_writestring("Failed to delete file (Not found or error).\n");
+            }
+        }
+        else if (strncmp(input_buffer, "touch ", 6) == 0) {
+            const char *filename = input_buffer + 6;
+            if (fat32_create_file(&fs, filename) == 0) {
+                terminal_writestring("File created successfully.\n");
+            } else {
+                terminal_writestring("Failed to create file.\n");
+            }
+        }
+        else if (strncmp(input_buffer, "cat ", 4) == 0) {
+            const char *filename = input_buffer + 4;
+            char read_buf[512];
+            int bytes_read = fat32_read_file(&fs, filename, read_buf, sizeof(read_buf));
+            if (bytes_read >= 0) {
+                terminal_writestring(read_buf);
+                terminal_writestring("\n");
+            } else {
+                terminal_writestring("Failed to read file.\n");
+            }
+        }
+        else if (strncmp(input_buffer, "echo ", 5) == 0) {
+            terminal_writestring(input_buffer + 5);
+            terminal_writestring("\n");
+        }
         else if (strcmp(input_buffer, "help") == 0) {
-            terminal_writestring("Commands: logo, ls, clear, ps, kill <pid>, help\n");
+            terminal_writestring("Commands: logo, ls, clear, ps, kill <pid>, rm <file>, touch <file>, cat <file>, echo <text>, help\n");
         } 
         else if (input_buffer[0] != '\0') {
             terminal_writestring("Unknown command: ");
