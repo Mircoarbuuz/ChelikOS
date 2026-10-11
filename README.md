@@ -16,3 +16,11 @@ Requirements
 | :--- | :--- |
 | **Minimum CPU** | AMD Athlon 64 |
 | **Minimum RAM** | 32 MB |
+| **External HDD** | 16 MB, Formatted in Fat32 |
+
+Build Requirements
+-
+| Cross Compiler | Version |
+| :--- | :--- |
+| **x86_64-elf-gcc crosscompiler** | 15.30 |
+| **x86_64-elf-ld** | 2.46.1 |
