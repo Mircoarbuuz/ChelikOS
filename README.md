@@ -16,3 +16,4 @@ Requirements
 | :--- | :--- |
 | **Minimum CPU** | AMD Athlon 64 |
 | **Minimum RAM** | 32 MB |
+| **External HDD** | 16 MB, Formatted in Fat32 |
