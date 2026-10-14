@@ -77,18 +77,45 @@ void terminal_putchar(char c)
         }
     }
 }
+void terminal_putchar_c(char c, uint8_t col) 
+{
+    if (c == '\n') {
+        terminal_column = 0;
+        if (++terminal_row == VGA_HEIGHT) {
+            terminal_scroll();
+            terminal_row = VGA_HEIGHT - 1;
+        }
+        return;
+    }
 
+    // Use the passed 'col' instead of global terminal_color
+    terminal_putentryat(c, col, terminal_column, terminal_row);
+    if (++terminal_column == VGA_WIDTH) {
+        terminal_column = 0;
+        if (++terminal_row == VGA_HEIGHT) {
+            terminal_scroll();
+            terminal_row = VGA_HEIGHT - 1;
+        }
+    }
+}
 void terminal_write(const char* data, size_t size) 
 {
     for (size_t i = 0; i < size; i++)
         terminal_putchar(data[i]);
 }
-
+void terminal_write_c(const char* data, size_t size, uint8_t color) 
+{
+    for (size_t i = 0; i < size; i++)
+        terminal_putchar_c(data[i], color); // <-- Passed 'color' here
+}
 void terminal_writestring(const char* data) 
 {
     terminal_write(data, strlen(data));
 }
-
+void terminal_writestring_c(const char* data, uint8_t col) 
+{
+    terminal_write_c(data, strlen(data), col); // <-- Passed 'col' here
+}
 static char keyboard_read_char(void) {
     static int shift_pressed = 0;
 

@@ -1,20 +1,41 @@
 #include <stdint.h>
 
-extern void process_yield(void);
-
+// Low-level port I/O helpers
 static inline void outb(uint16_t port, uint8_t val) {
     __asm__ volatile ("outb %0, %1" : : "a"(val), "Nd"(port));
 }
 
-void pit_init(uint32_t frequency) {
-    uint32_t divisor = 1193180 / frequency;
-    outb(0x43, 0x36); // Channel 0, low/high byte, square wave mode
-    outb(0x40, (uint8_t)(divisor & 0xFF));
-    outb(0x40, (uint8_t)((divisor >> 8) & 0xFF));
+static inline uint8_t inb(uint16_t port) {
+    uint8_t ret;
+    __asm__ volatile ("inb %1, %0" : "=a"(ret) : "Nd"(port));
+    return ret;
 }
 
-// Called automatically by the assembly IRQ0 stub every tick
-void timer_tick_handler(void) {
-    // This forces the CPU to switch tasks automatically!
-    process_yield();
+// PIT hardware port definitions
+#define PIT_CHANNEL0_PORT 0x40
+#define PIT_COMMAND_PORT  0x43
+#define PIT_BASE_FREQ     1193180
+
+void pit_init(uint32_t frequency) {
+    if (frequency == 0) {
+        return;
+    }
+
+    // Calculate the divisor based on the PIT base clock (1.19318 MHz)
+    uint32_t divisor = PIT_BASE_FREQ / frequency;
+    if (divisor > 65535) {
+        divisor = 65535; // Maximum 16-bit divisor limit
+    }
+
+    // Send the command byte:
+    // Bits 6-7: Select Channel 0 (00)
+    // Bits 4-5: Access mode lobyte/hibyte (11)
+    // Bits 1-3: Mode 3 - Square Wave Generator (011)
+    // Bit 0: Binary mode 16-bit (0)
+    // Combined hex value: 0x36
+    outb(PIT_COMMAND_PORT, 0x36);
+
+    // Send the frequency divisor (low byte first, then high byte)
+    outb(PIT_CHANNEL0_PORT, (uint8_t)(divisor & 0xFF));
+    outb(PIT_CHANNEL0_PORT, (uint8_t)((divisor >> 8) & 0xFF));
 }
