@@ -26,8 +26,8 @@ int fat32_mount(int drive, fat32_filesystem_t *fs) {
 
     fs->fat_start_sector = reserved_sec;
     fs->data_start_sector = reserved_sec + (num_fats * fat_size32);
-    fs->root_dir_cluster = root_clust;
-    fs->sectors_per_cluster = sec_per_clust;
+    fs->root_cluster = root_clust;
+    fs->sectors_per_cluster = sec_per_clust ? sec_per_clust : 1;
 
     return 0;
 }
@@ -36,12 +36,12 @@ static uint32_t cluster_to_sector(fat32_filesystem_t *fs, uint32_t cluster) {
     return fs->data_start_sector + (cluster - 2) * fs->sectors_per_cluster;
 }
 
-void fat32_list_root_dir(fat32_filesystem_t *fs, void (*callback)(const char *name, uint8_t attributes)) {
+int fat32_list_root_dir(fat32_filesystem_t *fs, void (*callback)(const char *name, uint8_t attributes)) {
     uint8_t sector_buf[512];
-    uint32_t root_sector = cluster_to_sector(fs, fs->root_dir_cluster);
+    uint32_t root_sector = cluster_to_sector(fs, fs->root_cluster);
 
     if (disk_read_sector(root_sector, sector_buf) != 0) {
-        return;
+        return -1;
     }
 
     // Parse directory entries (32 bytes each)
@@ -70,11 +70,12 @@ void fat32_list_root_dir(fat32_filesystem_t *fs, void (*callback)(const char *na
 
         callback(name_buf, entry[11]);
     }
+    return 0;
 }
 
 int fat32_create_file(fat32_filesystem_t *fs, const char *filename) {
     uint8_t sector_buf[512];
-    uint32_t root_sector = cluster_to_sector(fs, fs->root_dir_cluster);
+    uint32_t root_sector = cluster_to_sector(fs, fs->root_cluster);
 
     if (disk_read_sector(root_sector, sector_buf) != 0) {
         return -1;
@@ -83,7 +84,6 @@ int fat32_create_file(fat32_filesystem_t *fs, const char *filename) {
     for (int i = 0; i < 512; i += 32) {
         uint8_t *entry = &sector_buf[i];
         if (entry[0] == 0x00 || entry[0] == 0xE5) {
-            // Clear entry and set name
             for (int j = 0; j < 11; j++) entry[j] = ' ';
             
             int name_len = 0;
@@ -112,9 +112,40 @@ int fat32_create_file(fat32_filesystem_t *fs, const char *filename) {
     return -1; // Directory full
 }
 
+int fat32_create_dir(fat32_filesystem_t *fs, const char *dirname) {
+    uint8_t sector_buf[512];
+    uint32_t root_sector = cluster_to_sector(fs, fs->root_cluster);
+
+    if (disk_read_sector(root_sector, sector_buf) != 0) {
+        return -1;
+    }
+
+    for (int i = 0; i < 512; i += 32) {
+        uint8_t *entry = &sector_buf[i];
+        if (entry[0] == 0x00 || entry[0] == 0xE5) {
+            for (int j = 0; j < 11; j++) entry[j] = ' ';
+            
+            int name_len = 0;
+            while (dirname[name_len] != '\0' && name_len < 8) {
+                entry[name_len] = dirname[name_len];
+                name_len++;
+            }
+
+            entry[11] = 0x10; // Directory attribute
+            *(uint16_t *)&entry[20] = 0;
+            *(uint16_t *)&entry[26] = 0;
+            *(uint32_t *)&entry[28] = 0;
+
+            disk_write_sector(root_sector, sector_buf);
+            return 0;
+        }
+    }
+    return -1;
+}
+
 int fat32_delete_file(fat32_filesystem_t *fs, const char *filename) {
     uint8_t sector_buf[512];
-    uint32_t root_sector = cluster_to_sector(fs, fs->root_dir_cluster);
+    uint32_t root_sector = cluster_to_sector(fs, fs->root_cluster);
 
     if (disk_read_sector(root_sector, sector_buf) != 0) {
         return -1;
@@ -151,7 +182,7 @@ int fat32_delete_file(fat32_filesystem_t *fs, const char *filename) {
 
 int fat32_read_file(fat32_filesystem_t *fs, const char *filename, char *buffer, uint32_t max_len) {
     uint8_t sector_buf[512];
-    uint32_t root_sector = cluster_to_sector(fs, fs->root_dir_cluster);
+    uint32_t root_sector = cluster_to_sector(fs, fs->root_cluster);
 
     if (disk_read_sector(root_sector, sector_buf) != 0) {
         return -1;

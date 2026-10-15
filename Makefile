@@ -35,6 +35,9 @@ chelikos.iso: kernel.bin
 	if [ ! -f grub.cfg ]; then \
 		echo "set timeout=0" > iso/boot/grub/grub.cfg; \
 		echo "set default=0" >> iso/boot/grub/grub.cfg; \
+		echo "insmod vbe" >> iso/boot/grub/grub.cfg; \
+		echo "insmod vga" >> iso/boot/grub/grub.cfg; \
+		echo "set gfxpayload=\"1024x768x16\"" >> iso/boot/grub/grub.cfg; \
 		echo "" >> iso/boot/grub/grub.cfg; \
 		echo "menuentry \"ChelikOS\" {" >> iso/boot/grub/grub.cfg; \
 		echo "    multiboot2 /boot/kernel.bin" >> iso/boot/grub/grub.cfg; \
