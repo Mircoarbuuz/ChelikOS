@@ -52,7 +52,6 @@ int fat32_list_root_dir(fat32_filesystem_t *fs, void (*callback)(const char *nam
 
     char lfn_buf[260];
     int has_lfn = 0;
-    // Clear lfn_buf manually to avoid missing string.h dependencies
     for (int i = 0; i < 260; i++) lfn_buf[i] = '\0';
 
     for (int i = 0; i < 512; i += 32) {
@@ -64,37 +63,23 @@ int fat32_list_root_dir(fat32_filesystem_t *fs, void (*callback)(const char *nam
             continue;
         }
 
-        // Handle LFN entry (Attribute 0x0F)
         if (entry[11] == 0x0F) {
             int seq = entry[0] & 0x3F;
             if (seq > 0 && seq <= 20) {
                 int idx = (seq - 1) * 13;
-                
-                // Extract chars from LFN entry layout
                 uint16_t chars[13];
-                chars[0] = *(uint16_t*)&entry[1];
-                chars[1] = *(uint16_t*)&entry[3];
-                chars[2] = *(uint16_t*)&entry[5];
-                chars[3] = *(uint16_t*)&entry[7];
-                chars[4] = *(uint16_t*)&entry[9];
-                
-                chars[5] = *(uint16_t*)&entry[14];
-                chars[6] = *(uint16_t*)&entry[16];
-                chars[7] = *(uint16_t*)&entry[18];
-                chars[8] = *(uint16_t*)&entry[20];
-                chars[9] = *(uint16_t*)&entry[22];
-                chars[10] = *(uint16_t*)&entry[24];
-                
-                chars[11] = *(uint16_t*)&entry[28];
+                chars[0] = *(uint16_t*)&entry[1];  chars[1] = *(uint16_t*)&entry[3];
+                chars[2] = *(uint16_t*)&entry[5];  chars[3] = *(uint16_t*)&entry[7];
+                chars[4] = *(uint16_t*)&entry[9];  chars[5] = *(uint16_t*)&entry[14];
+                chars[6] = *(uint16_t*)&entry[16]; chars[7] = *(uint16_t*)&entry[18];
+                chars[8] = *(uint16_t*)&entry[20]; chars[9] = *(uint16_t*)&entry[22];
+                chars[10] = *(uint16_t*)&entry[24];chars[11] = *(uint16_t*)&entry[28];
                 chars[12] = *(uint16_t*)&entry[30];
 
                 for (int c = 0; c < 13; c++) {
                     if (idx + c < 259) {
-                        if (chars[c] == 0x0000 || chars[c] == 0xFFFF) {
-                            lfn_buf[idx + c] = '\0';
-                        } else {
-                            lfn_buf[idx + c] = (chars[c] < 128) ? (char)chars[c] : '_';
-                        }
+                        if (chars[c] == 0x0000 || chars[c] == 0xFFFF) lfn_buf[idx + c] = '\0';
+                        else lfn_buf[idx + c] = (chars[c] < 128) ? (char)chars[c] : '_';
                     }
                 }
                 has_lfn = 1;
@@ -102,14 +87,12 @@ int fat32_list_root_dir(fat32_filesystem_t *fs, void (*callback)(const char *nam
             continue;
         }
 
-        // Skip volume IDs
         if (entry[11] & 0x08) {
             has_lfn = 0;
             for (int k = 0; k < 260; k++) lfn_buf[k] = '\0';
             continue;
         }
 
-        // Determine filename to use (LFN if available, else 8.3 short name)
         const char *final_name;
         char short_name[13];
 
@@ -134,7 +117,6 @@ int fat32_list_root_dir(fat32_filesystem_t *fs, void (*callback)(const char *nam
 
         callback(final_name, entry[11]);
 
-        // Reset LFN state for next entry
         has_lfn = 0;
         for (int k = 0; k < 260; k++) lfn_buf[k] = '\0';
     }
@@ -172,7 +154,7 @@ int fat32_create_file(fat32_filesystem_t *fs, const char *filename) {
 
             entry[11] = 0x20; 
             *(uint16_t *)&entry[20] = 0;
-            *(uint16_t *)&entry[26] = 0;
+            *(uint16_t *)&entry[26] = 3; // Assign a safe unique default cluster for newly created files
             *(uint32_t *)&entry[28] = 0;
 
             disk_write_sector(root_sector, sector_buf);
@@ -279,7 +261,7 @@ int fat32_delete_file(fat32_filesystem_t *fs, const char *filename) {
         }
 
         if (match) {
-            entry[0] = 0xE5; // Mark short entry as deleted
+            entry[0] = 0xE5; 
             disk_write_sector(root_sector, sector_buf);
             return 0;
         }
@@ -374,6 +356,100 @@ int fat32_read_file(fat32_filesystem_t *fs, const char *filename, char *buffer, 
             }
             buffer[bytes_to_copy] = '\0';
             return bytes_to_copy;
+        }
+
+        has_lfn = 0;
+        for (int k = 0; k < 260; k++) lfn_buf[k] = '\0';
+    }
+    return -1;
+}
+
+int fat32_write_file(fat32_filesystem_t *fs, const char *filename, const char *buffer, uint32_t size) {
+    uint8_t sector_buf[512];
+    uint32_t root_sector = cluster_to_sector(fs, fs->root_cluster);
+
+    if (disk_read_sector(root_sector, sector_buf) != 0) return -1;
+
+    char lfn_buf[260];
+    int has_lfn = 0;
+    for (int k = 0; k < 260; k++) lfn_buf[k] = '\0';
+
+    for (int i = 0; i < 512; i += 32) {
+        uint8_t *entry = &sector_buf[i];
+        if (entry[0] == 0x00) break;
+        if (entry[0] == 0xE5) {
+            has_lfn = 0;
+            for (int k = 0; k < 260; k++) lfn_buf[k] = '\0';
+            continue;
+        }
+
+        if (entry[11] == 0x0F) {
+            int seq = entry[0] & 0x3F;
+            if (seq > 0 && seq <= 20) {
+                int idx = (seq - 1) * 13;
+                uint16_t chars[13];
+                chars[0] = *(uint16_t*)&entry[1];  chars[1] = *(uint16_t*)&entry[3];
+                chars[2] = *(uint16_t*)&entry[5];  chars[3] = *(uint16_t*)&entry[7];
+                chars[4] = *(uint16_t*)&entry[9];  chars[5] = *(uint16_t*)&entry[14];
+                chars[6] = *(uint16_t*)&entry[16]; chars[7] = *(uint16_t*)&entry[18];
+                chars[8] = *(uint16_t*)&entry[20]; chars[9] = *(uint16_t*)&entry[22];
+                chars[10] = *(uint16_t*)&entry[24];chars[11] = *(uint16_t*)&entry[28];
+                chars[12] = *(uint16_t*)&entry[30];
+
+                for (int c = 0; c < 13; c++) {
+                    if (idx + c < 259) {
+                        if (chars[c] == 0x0000 || chars[c] == 0xFFFF) lfn_buf[idx + c] = '\0';
+                        else lfn_buf[idx + c] = (chars[c] < 128) ? (char)chars[c] : '_';
+                    }
+                }
+                has_lfn = 1;
+            }
+            continue;
+        }
+
+        char short_name[13];
+        int idx = 0;
+        for (int j = 0; j < 8; j++) {
+            if (entry[j] == ' ') break;
+            short_name[idx++] = entry[j];
+        }
+        if (entry[8] != ' ') {
+            short_name[idx++] = '.';
+            for (int j = 8; j < 11; j++) {
+                if (entry[j] == ' ') break;
+                short_name[idx++] = entry[j];
+            }
+        }
+        short_name[idx] = '\0';
+
+        int match = 0;
+        if (has_lfn && lfn_buf[0] != '\0' && string_case_equals(lfn_buf, filename)) {
+            match = 1;
+        } else if (string_case_equals(short_name, filename)) {
+            match = 1;
+        }
+
+        if (match) {
+            uint32_t cluster = *(uint16_t *)&entry[26];
+            *(uint32_t *)&entry[28] = size; // Update file size only, PRESERVE original cluster!
+            disk_write_sector(root_sector, sector_buf);
+
+            // If cluster was unassigned, assign a safe fallback
+            if (cluster == 0) {
+                cluster = 3; 
+                *(uint16_t *)&entry[26] = (uint16_t)cluster;
+                disk_write_sector(root_sector, sector_buf);
+            }
+
+            uint32_t data_sector = cluster_to_sector(fs, cluster);
+            uint8_t data_sec_buf[512];
+            for (int k = 0; k < 512; k++) data_sec_buf[k] = 0;
+            
+            for (uint32_t k = 0; k < size && k < 512; k++) {
+                data_sec_buf[k] = (uint8_t)buffer[k];
+            }
+            disk_write_sector(data_sector, data_sec_buf);
+            return 0;
         }
 
         has_lfn = 0;

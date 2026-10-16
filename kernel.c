@@ -64,6 +64,15 @@ void print_dec(int val) {
     }
 }
 
+int simple_atoi(const char *str) {
+    int res = 0;
+    while (*str >= '0' && *str <= '9') {
+        res = res * 10 + (*str - '0');
+        str++;
+    }
+    return res;
+}
+
 // Safe PIT timer tick: Acknowledge the PIC without forcing dangerous preemption
 void timer_tick_handler(void) {
     outb(0x20, 0x20); // Acknowledge master PIC
@@ -315,7 +324,6 @@ void print_file(const char *name, uint8_t attributes) {
 }
 
 void print_process_entry(int pid, const char *state_str, const char *name) {
-    (void)pid;
     terminal_writestring("  [PID ");
     print_dec(pid);
     terminal_writestring("] ");
@@ -323,6 +331,61 @@ void print_process_entry(int pid, const char *state_str, const char *name) {
     terminal_writestring(" - State: ");
     terminal_writestring(state_str);
     terminal_writestring("\n");
+}
+
+// Multiline Text Editor Mode
+void run_text_editor(fat32_filesystem_t *fs, const char *filename) {
+    terminal_initialize();
+    terminal_writestring_c("=== ChelikOS Text Editor ===\n", 0xE);
+    terminal_writestring("Editing file: ");
+    terminal_writestring_c(filename, 0xB);
+    terminal_writestring("\nType your text line by line.\n");
+    terminal_writestring("Commands on a new line: ':wq' to save & exit, ':q' to quit without saving.\n");
+    terminal_writestring("--------------------------------------------------\n\n");
+
+    char file_buffer[4096];
+    int buf_len = 0;
+    file_buffer[0] = '\0';
+
+    char line_buf[256];
+
+    while (1) {
+        terminal_getkey("", line_buf, sizeof(line_buf));
+        line_buf[sizeof(line_buf) - 1] = '\0';
+
+        if (strcmp(line_buf, ":wq") == 0) {
+            // Save file
+            if (fat32_write_file(fs, filename, file_buffer, buf_len) == 0) {
+                terminal_writestring("\n[File saved successfully!]\n");
+            } else {
+                terminal_writestring("\n[Error: Failed to save file!]\n");
+            }
+            break;
+        }
+        else if (strcmp(line_buf, ":q") == 0) {
+            terminal_writestring("\n[Exited without saving.]\n");
+            break;
+        }
+
+        // Append line to buffer
+        int l = 0;
+        while (line_buf[l] != '\0') {
+            if (buf_len < (int)sizeof(file_buffer) - 2) {
+                file_buffer[buf_len++] = line_buf[l];
+            }
+            l++;
+        }
+        if (buf_len < (int)sizeof(file_buffer) - 2) {
+            file_buffer[buf_len++] = '\n';
+        }
+        file_buffer[buf_len] = '\0';
+
+        terminal_writestring("\n");
+    }
+
+    terminal_writestring("\nPress any key to return to shell...");
+    terminal_getkey("", line_buf, sizeof(line_buf));
+    terminal_initialize();
 }
 
 void kernel_main(uint32_t magic, uint32_t addr) {
@@ -335,7 +398,7 @@ void kernel_main(uint32_t magic, uint32_t addr) {
     ata_wait_ready();
 
     terminal_initialize();
-    terminal_writestring_c("ChelikOS 0.01241\n", 0xF);
+    terminal_writestring_c("ChelikOS 0.0125\n", 0xF);
     process_manager_init();
     process_create("bg_worker", background_worker);
 
@@ -366,6 +429,22 @@ void kernel_main(uint32_t magic, uint32_t addr) {
         else if (strcmp(input_buffer, "ps") == 0 || strcmp(input_buffer, "tasks") == 0) {
             terminal_writestring("Active Processes:\n");
             process_list_all(print_process_entry);
+        }
+        else if (strncmp(input_buffer, "kill ", 5) == 0) {
+            int pid = simple_atoi(input_buffer + 5);
+            if (process_kill(pid) == 0) {
+                terminal_writestring("Killed process PID ");
+                print_dec(pid);
+                terminal_writestring("\n");
+            } else {
+                terminal_writestring("Failed to kill PID ");
+                print_dec(pid);
+                terminal_writestring("\n");
+            }
+        }
+        else if (strncmp(input_buffer, "edit ", 5) == 0) {
+            const char* filename = input_buffer + 5;
+            run_text_editor(&fs, filename);
         }
         else if (strncmp(input_buffer, "rm ", 3) == 0) {
             const char* filename = input_buffer + 3;
@@ -423,7 +502,7 @@ void kernel_main(uint32_t magic, uint32_t addr) {
             terminal_writestring("\n");
         }
         else if (strcmp(input_buffer, "help") == 0) {
-            terminal_writestring("Commands: logo, ls, clear, ps, cat <file>, touch <file>, mkdir <dir>, echo <text>, plt, help\n");
+            terminal_writestring("Commands: logo, ls, clear, ps, kill <pid>, edit <file>, cat <file>, touch <file>, rm <file>, mkdir <dir>, echo <text>, plt, help\n");
         } 
         else if (input_buffer[0] != '\0') {
             terminal_writestring("Unknown command: ");
