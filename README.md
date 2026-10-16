@@ -17,6 +17,7 @@ Requirements
 | **Minimum CPU** | AMD Athlon 64 |
 | **Minimum RAM** | 32 MB |
 | **External HDD** | 16 MB, Formatted in Fat32 |
+| **VBE Version** | 2.0/3.0 |
 
 Build Requirements
 -
