@@ -335,8 +335,7 @@ void kernel_main(uint32_t magic, uint32_t addr) {
     ata_wait_ready();
 
     terminal_initialize();
-    terminal_writestring("ChelikOS 0.0124\n");
-    
+    terminal_writestring_c("ChelikOS 0.01241\n", 0xF);
     process_manager_init();
     process_create("bg_worker", background_worker);
 
@@ -368,10 +367,22 @@ void kernel_main(uint32_t magic, uint32_t addr) {
             terminal_writestring("Active Processes:\n");
             process_list_all(print_process_entry);
         }
+        else if (strncmp(input_buffer, "rm ", 3) == 0) {
+            const char* filename = input_buffer + 3;
+            if (fat32_delete_file(&fs, filename) == 0) {
+                terminal_writestring("Deleted: ");
+                terminal_writestring(filename);
+                terminal_writestring("\n");
+            } else {
+                terminal_writestring("Failed to delete: ");
+                terminal_writestring(filename);
+                terminal_writestring("\n");
+            }
+        }
         else if (strncmp(input_buffer, "cat ", 4) == 0) {
             const char* filename = input_buffer + 4;
             char file_buf[512];
-            if (fat32_read_file(&fs, filename, file_buf, sizeof(file_buf)) == 0) {
+            if (fat32_read_file(&fs, filename, file_buf, sizeof(file_buf)) >= 0) {
                 terminal_writestring(file_buf);
                 terminal_writestring("\n");
             } else {
