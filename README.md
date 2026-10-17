@@ -2,7 +2,6 @@
 
 ![](https://img.shields.io/badge/version-0.0125-green)
 ![](https://img.shields.io/badge/License-GPL%203.0-yellow)
-
 ![](https://img.shields.io/badge/arch-x64-teal) <br>
 
 ChelikOS is a Actual OS instead of a kernel with ramfs like cerulea
