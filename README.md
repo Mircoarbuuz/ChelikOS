@@ -1,4 +1,4 @@
-![](https://img.sheilds.io/badge/0.0125-green)
+![](https://img.shields.io/badge/version-0.0125-green)
 ChelikOS is a Actual OS instead of a kernel with ramfs like cerulea
 
 Differences
