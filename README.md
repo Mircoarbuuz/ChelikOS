@@ -1,6 +1,7 @@
 <img width="1500" height="500" alt="ChelikOS logo" src="https://github.com/user-attachments/assets/058259ca-dd4d-43b9-b49d-68a173dc8da8" /> <br>
 
 ![](https://img.shields.io/badge/version-0.0125-green)
+![](https://img.shields.io/badge/License-GPL%203.0-yellow)
 ![](https://img.shields.io/badge/arch-x64-teal) <br>
 
 ChelikOS is a Actual OS instead of a kernel with ramfs like cerulea
