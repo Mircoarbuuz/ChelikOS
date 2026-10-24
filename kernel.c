@@ -392,13 +392,11 @@ void kernel_main(uint32_t magic, uint32_t addr) {
     if (magic == 0x36d76289) {
         terminal_init_from_multiboot((uint32_t*)(uint64_t)addr);
     }
-    
     pic_remap();
     idt_init();
     ata_wait_ready();
-
     terminal_initialize();
-    terminal_writestring_c("ChelikOS 0.0125\n", 0xF);
+    terminal_writestring_16("Welcome To ChelikOS 0.01251\n",0x43a6,0x0000);
     process_manager_init();
     process_create("bg_worker", background_worker);
 

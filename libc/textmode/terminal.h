@@ -1,5 +1,6 @@
 #ifndef TERMINAL_H
 #define TERMINAL_H
+
 #include "gohufont.h"
 #include "../int.h"
 #include "../def.h"
@@ -20,7 +21,8 @@ static size_t term_rows = 54;  // 768 / 14 = ~54 rows for Gohufont 14px
 
 size_t terminal_row;
 size_t terminal_column;
-uint8_t terminal_color;
+uint16_t terminal_fg_color = 0xFFFF; // Default White (RGB565)
+uint16_t terminal_bg_color = 0x0000; // Default Black (RGB565)
 
 void terminal_init_from_multiboot(uint32_t* mbi_addr) {
     if (mbi_addr) {
@@ -68,7 +70,8 @@ void terminal_init_from_multiboot(uint32_t* mbi_addr) {
     }
 }
 
-void terminal_draw_char(size_t cx, size_t cy, char c, uint8_t color) {
+/* Directly draws a character using 16-bit RGB565 foreground and background colors */
+void terminal_draw_char(size_t cx, size_t cy, char c, uint16_t fg_color, uint16_t bg_color) {
     if (!terminal_fb) return;
 
     int px = cx * 9; 
@@ -79,41 +82,56 @@ void terminal_draw_char(size_t cx, size_t cy, char c, uint8_t color) {
         uc = uc - 'a' + 'A';
     }
 
-    uint16_t fg_color = 0xFFFF;
-    switch (color & 0x0F) {
-        case 0:  fg_color = 0x0000; break;
-        case 1:  fg_color = 0x001F; break;
-        case 2:  fg_color = 0x07E0; break;
-        case 3:  fg_color = 0x07FF; break;
-        case 4:  fg_color = 0xF800; break;
-        case 5:  fg_color = 0xF81F; break;
-        case 6:  fg_color = 0xFD20; break;
-        case 7:  fg_color = 0xC618; break;
-        case 8:  fg_color = 0x8410; break;
-        case 9:  fg_color = 0x841F; break;
-        case 10: fg_color = 0x07FF; break;
-        case 11: fg_color = 0x87FF; break;
-        case 12: fg_color = 0xF810; break;
-        case 13: fg_color = 0xF81F; break;
-        case 14: fg_color = 0xFFE0; break;
-        case 15: fg_color = 0xFFFF; break;
-    }
-
     for (int y = 0; y < 14; y++) {
         uint8_t line = gohufont_8x14[uc][y];
-        for (int x = 0; x < 8; x++) {
-            if (line & (1 << (7 - x))) {
-                int target_x = px + x;
-                int target_y = py + y;
-                if (target_x < (int)fb_width && target_y < (int)fb_height) {
-                    terminal_fb[target_y * fb_pitch_pixels + target_x] = fg_color;
-                }
+        int target_y = py + y;
+
+        if (target_y >= (int)fb_height) continue;
+
+        for (int x = 0; x < 9; x++) {
+            int target_x = px + x;
+            if (target_x >= (int)fb_width) continue;
+
+            if (x < 8 && (line & (1 << (7 - x)))) {
+                terminal_fb[target_y * fb_pitch_pixels + target_x] = fg_color;
+            } else {
+                terminal_fb[target_y * fb_pitch_pixels + target_x] = bg_color;
             }
         }
     }
 }
 
-// Clears a full 9x14 cell with solid black
+/* Convert 4-bit VGA color index to 16-bit RGB565 */
+static uint16_t vga_to_rgb565(uint8_t vga_color) {
+    switch (vga_color & 0x0F) {
+        case 0:  return 0x0000; // Black
+        case 1:  return 0x001F; // Blue
+        case 2:  return 0x07E0; // Green
+        case 3:  return 0x07FF; // Cyan
+        case 4:  return 0xF800; // Red
+        case 5:  return 0xF81F; // Magenta
+        case 6:  return 0xFD20; // Brown
+        case 7:  return 0xC618; // Light Grey
+        case 8:  return 0x8410; // Dark Grey
+        case 9:  return 0x841F; // Light Blue
+        case 10: return 0x57EA; // Light Green
+        case 11: return 0x07FF; // Light Cyan
+        case 12: return 0xF810; // Light Red
+        case 13: return 0xF81F; // Light Magenta
+        case 14: return 0xFFE0; // Yellow
+        case 15: return 0xFFFF; // White
+        default: return 0xFFFF;
+    }
+}
+
+/* Legacy helper to draw using VGA index */
+void terminal_draw_char_vga(size_t cx, size_t cy, char c, uint8_t color) {
+    uint16_t fg = vga_to_rgb565(color & 0x0F);
+    uint16_t bg = vga_to_rgb565((color >> 4) & 0x0F);
+    terminal_draw_char(cx, cy, c, fg, bg);
+}
+
+// Clears a full 9x14 cell with solid background
 void terminal_clear_cell(size_t cx, size_t cy) {
     if (!terminal_fb) return;
     int px = cx * 9;
@@ -123,7 +141,7 @@ void terminal_clear_cell(size_t cx, size_t cy) {
             int target_x = px + x;
             int target_y = py + y;
             if (target_x < (int)fb_width && target_y < (int)fb_height) {
-                terminal_fb[target_y * fb_pitch_pixels + target_x] = 0x0000;
+                terminal_fb[target_y * fb_pitch_pixels + target_x] = terminal_bg_color;
             }
         }
     }
@@ -133,19 +151,33 @@ void terminal_initialize(void)
 {
     terminal_row = 0;
     terminal_column = 0;
-    terminal_color = vga_entry_color(VGA_COLOR_LIGHT_GREY, VGA_COLOR_BLACK);
+    terminal_fg_color = 0xC618; // Light Grey
+    terminal_bg_color = 0x0000; // Black
 
     if (terminal_fb) {
         for (size_t y = 0; y < fb_height; y++) {
             for (size_t x = 0; x < fb_width; x++) {
-                terminal_fb[y * fb_pitch_pixels + x] = 0x0000;
+                terminal_fb[y * fb_pitch_pixels + x] = terminal_bg_color;
             }
         }
     }
 }
 
-void terminal_setcolor(uint8_t color) { terminal_color = color; }
-void terminal_putentryat(char c, uint8_t color, size_t x, size_t y) { terminal_draw_char(x, y, c, color); }
+void terminal_setcolor(uint8_t color) { 
+    terminal_fg_color = vga_to_rgb565(color & 0x0F);
+    terminal_bg_color = vga_to_rgb565((color >> 4) & 0x0F);
+}
+
+void terminal_setcolor_16(uint16_t fg, uint16_t bg) { 
+    terminal_fg_color = fg; 
+    terminal_bg_color = bg; 
+}
+
+void terminal_putentryat(char c, uint8_t color, size_t x, size_t y) { 
+    uint16_t fg = vga_to_rgb565(color & 0x0F);
+    uint16_t bg = vga_to_rgb565((color >> 4) & 0x0F);
+    terminal_draw_char(x, y, c, fg, bg); 
+}
 
 void terminal_scroll(void) {
     if (!terminal_fb) return;
@@ -158,7 +190,7 @@ void terminal_scroll(void) {
     }
 
     for (size_t i = total_words - row_words; i < total_words; i++) {
-        terminal_fb[i] = 0x0000;
+        terminal_fb[i] = terminal_bg_color;
     }
 }
 
@@ -172,7 +204,7 @@ void terminal_putchar(char c) {
         return;
     }
 
-    terminal_putentryat(c, terminal_color, terminal_column, terminal_row);
+    terminal_draw_char(terminal_column, terminal_row, c, terminal_fg_color, terminal_bg_color);
     if (++terminal_column == term_cols) {
         terminal_column = 0;
         if (++terminal_row == term_rows) {
@@ -182,7 +214,8 @@ void terminal_putchar(char c) {
     }
 }
 
-void terminal_putchar_c(char c, uint8_t col) {
+/* 8-bit VGA Compatibility Wrappers (matches existing kernel.c calls) */
+void terminal_putchar_c(char c, uint8_t color) {
     if (c == '\n') {
         terminal_column = 0;
         if (++terminal_row == term_rows) {
@@ -192,7 +225,10 @@ void terminal_putchar_c(char c, uint8_t col) {
         return;
     }
 
-    terminal_putentryat(c, col, terminal_column, terminal_row);
+    uint16_t fg = vga_to_rgb565(color & 0x0F);
+    uint16_t bg = vga_to_rgb565((color >> 4) & 0x0F);
+
+    terminal_draw_char(terminal_column, terminal_row, c, fg, bg);
     if (++terminal_column == term_cols) {
         terminal_column = 0;
         if (++terminal_row == term_rows) {
@@ -211,7 +247,39 @@ void terminal_write_c(const char* data, size_t size, uint8_t color) {
 }
 
 void terminal_writestring(const char* data) { terminal_write(data, strlen(data)); }
-void terminal_writestring_c(const char* data, uint8_t col) { terminal_write_c(data, strlen(data), col); }
+
+void terminal_writestring_c(const char* data, uint8_t color) { 
+    terminal_write_c(data, strlen(data), color); 
+}
+
+/* Full 16-bit RGB565 custom functions */
+void terminal_putchar_16(char c, uint16_t fg, uint16_t bg) {
+    if (c == '\n') {
+        terminal_column = 0;
+        if (++terminal_row == term_rows) {
+            terminal_scroll();
+            terminal_row = term_rows - 1;
+        }
+        return;
+    }
+
+    terminal_draw_char(terminal_column, terminal_row, c, fg, bg);
+    if (++terminal_column == term_cols) {
+        terminal_column = 0;
+        if (++terminal_row == term_rows) {
+            terminal_scroll();
+            terminal_row = term_rows - 1;
+        }
+    }
+}
+
+void terminal_write_16(const char* data, size_t size, uint16_t fg, uint16_t bg) {
+    for (size_t i = 0; i < size; i++) terminal_putchar_16(data[i], fg, bg);
+}
+
+void terminal_writestring_16(const char* data, uint16_t fg, uint16_t bg) { 
+    terminal_write_16(data, strlen(data), fg, bg); 
+}
 
 static char keyboard_read_char(void) {
     static int shift_pressed = 0;
@@ -262,7 +330,6 @@ void terminal_getkey(const char* prompt, char* buffer, size_t max_len) {
                 } else {
                     terminal_column--;
                 }
-                // Draw solid 9x14 black square to cleanly erase character
                 terminal_clear_cell(terminal_column, terminal_row);
             }
         } else if (index < max_len - 1 && c >= 32 && c <= 126) {
