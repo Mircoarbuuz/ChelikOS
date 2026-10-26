@@ -4,7 +4,7 @@
 #include "gohufont.h"
 #include "../int.h"
 #include "../def.h"
-#include "../../libc/textmode/vga.h"
+#include <stdint.h>
 #include "../../libc/string.h"
 #include "../inb.h"
 
